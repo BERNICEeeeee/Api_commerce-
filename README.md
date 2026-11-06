@@ -79,4 +79,4 @@ L'IA a été utilisée comme aide au développement, notamment pour :
 - créer la spécification OpenAPI dans `docs/openapi.yaml` ;
 - élaborer des contrôleurs à partir des routes, des modèles, des middlewares et des descriptions fonctionnelles du projet.
 
-Les résultats générés sont intégrés au projet et doivent être vérifiés et adaptés à son code et à ses besoins.
+Les résultats générés sont intégrés au projet et ont été vérifiés et adaptés à son code et à ses besoins.
