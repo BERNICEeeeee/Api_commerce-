@@ -13,6 +13,7 @@ model User {
   password  String
   name      String
   role      String    @default("client") // "client", "vendeur", "admin"
+  banned    Boolean   @default(false)
   products  Product[] @relation("VendeurProducts")
   orders    Order[]   @relation("ClientOrders")
   createdAt DateTime  @default(now())
