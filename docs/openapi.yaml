@@ -1,0 +1,829 @@
+openapi: 3.0.3
+info:
+  title: E-Commerce API
+  description: API for authentication, users, product listings, carts, and product comments.
+  version: 1.0.0
+servers:
+  - url: /
+    description: Current server
+tags:
+  - name: Authentication
+  - name: Users
+  - name: Products
+  - name: Cart
+  - name: Comments
+paths:
+  /:
+    get:
+      summary: Redirect to API documentation
+      responses:
+        '302':
+          description: Redirects to /docs
+          headers:
+            Location:
+              schema:
+                type: string
+              example: /docs
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                name:
+                  type: string
+                role:
+                  type: string
+                  enum: [client, vendeur]
+                  default: client
+      responses:
+        '201':
+          description: Account created; includes a JWT and user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid or missing registration fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email is already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Log in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Login successful; includes a JWT and user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Missing credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Incorrect password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/disconnect:
+    get:
+      tags: [Authentication]
+      summary: Disconnect
+      description: Returns a confirmation. JWTs are stateless and are not invalidated by this endpoint.
+      responses:
+        '200':
+          description: Disconnection confirmation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get the authenticated user's profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags: [Users]
+      summary: Update the authenticated user's profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: No changes provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /users/admin/utilisateurs:
+    get:
+      tags: [Users]
+      summary: List all users
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Users, without password hashes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /users/ban/{id}:
+    patch:
+      tags: [Users]
+      summary: Ban a user
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User banned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserActionResponse'
+        '400':
+          description: Invalid ID, user already banned, or target is an administrator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/unban/{id}:
+    patch:
+      tags: [Users]
+      summary: Unban a user
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User unbanned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserActionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/role/{id}:
+    patch:
+      tags: [Users]
+      summary: Change a user's role
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [client, vendeur, admin]
+      responses:
+        '200':
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserActionResponse'
+        '400':
+          description: Invalid ID or role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /produits/catalogue:
+    get:
+      tags: [Products]
+      summary: List the product catalogue
+      responses:
+        '200':
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  produits:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+  /produits/{id}:
+    get:
+      tags: [Products]
+      summary: Get a product
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Product details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  produit:
+                    $ref: '#/components/schemas/Product'
+        '400':
+          description: Invalid product ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /produits/ajouter:
+    post:
+      tags: [Products]
+      summary: Publish a product offer
+      description: Only sellers may publish offers; banned sellers are forbidden from creating new offers.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, price]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                price:
+                  type: number
+                  format: float
+                  exclusiveMinimum: 0
+                stock:
+                  type: integer
+                  minimum: 0
+                  default: 0
+                imageUrl:
+                  type: string
+                  format: uri
+                  nullable: true
+      responses:
+        '201':
+          description: Product offer created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  produit:
+                    $ref: '#/components/schemas/Product'
+        '400':
+          description: Missing or invalid product data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not a seller or seller is banned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /panier:
+    get:
+      tags: [Cart]
+      summary: Get or create the authenticated user's pending cart
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Pending order with cart items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  panier:
+                    $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /panier/ajouter/{id}:
+    post:
+      tags: [Cart]
+      summary: Add a product to the cart
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                quantity:
+                  type: integer
+                  minimum: 1
+                  default: 1
+      responses:
+        '201':
+          description: Product added to cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartItemActionResponse'
+        '200':
+          description: Existing cart line quantity updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartItemActionResponse'
+        '400':
+          description: Invalid product ID or quantity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /panier/modifier/{id}:
+    patch:
+      tags: [Cart]
+      summary: Set a cart line's quantity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CartItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              properties:
+                quantity:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Cart line updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartItemActionResponse'
+        '400':
+          description: Invalid cart line ID or quantity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Cart line not found in the user's pending cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /panier/delete/{id}:
+    delete:
+      tags: [Cart]
+      summary: Remove a cart line
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CartItemId'
+      responses:
+        '200':
+          description: Cart line removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid cart line ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Cart line not found in the user's pending cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /comments/{productId}:
+    get:
+      tags: [Comments]
+      summary: List comments for a product
+      parameters:
+        - $ref: '#/components/parameters/CommentProductId'
+      responses:
+        '200':
+          description: Comments ordered newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+        '400':
+          description: Invalid product ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags: [Comments]
+      summary: Add a comment to a product
+      description: Only authenticated, non-banned clients may add comments.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CommentProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content, rating]
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  comment:
+                    $ref: '#/components/schemas/Comment'
+        '400':
+          description: Invalid product ID, comment content, or rating
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: User is not a client or is banned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User or product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    ProductId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    CommentProductId:
+      name: productId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    CartItemId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Insufficient role
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        erreur:
+          type: string
+        detail:
+          type: string
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+    AuthResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [client, vendeur, admin]
+        banned:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    UserActionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price:
+          type: number
+          format: float
+        stock:
+          type: integer
+        imageUrl:
+          type: string
+          nullable: true
+        vendeurId:
+          type: integer
+        vendeur:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            email:
+              type: string
+              format: email
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        total:
+          type: number
+          format: float
+        status:
+          type: string
+          example: pending
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItem'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CartItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        orderId:
+          type: integer
+        productId:
+          type: integer
+        quantity:
+          type: integer
+        price:
+          type: number
+          format: float
+    CartItemActionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        item:
+          $ref: '#/components/schemas/CartItem'
+    Comment:
+      type: object
+      properties:
+        _id:
+          type: string
+        productId:
+          type: integer
+        userId:
+          type: integer
+        userName:
+          type: string
+        content:
+          type: string
+        rating:
+          type: number
+          minimum: 1
+          maximum: 5
+        createdAt:
+          type: string
+          format: date-time
