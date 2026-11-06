@@ -80,3 +80,56 @@ L'IA a été utilisée comme aide au développement, notamment pour :
 - élaborer des contrôleurs à partir des routes, des modèles, des middlewares et des descriptions fonctionnelles du projet.
 
 Les résultats générés sont intégrés au projet et ont été vérifiés et adaptés à son code et à ses besoins.
+
+## Sécurité
+
+### Flux et frontières de confiance
+
+```text
+ FRONTIÈRE 1 — clients non fiables
+ [Navigateur / application cliente]
+        | HTTPS en production ; requêtes HTTP locales en développement
+        | JSON, paramètres d'URL et jeton Bearer dans Authorization
+        v
+ FRONTIÈRE 2 — serveur de l'application
+ [Express : /auth, /users, /produits, /panier, /comments, /docs]
+        | Prisma
+        +--------------------------> [PostgreSQL : comptes, produits, commandes]
+        | Mongoose
+        +--------------------------> [MongoDB : commentaires]
+                                    (connexion prévue, non activée au démarrage)
+
+ FRONTIÈRE 3 — chaîne de dépendances
+ [package.json / package-lock.json] -> npm ci -> dépendances exécutées par l'API
+```
+
+Le client et toutes les données qu'il envoie sont considérés comme non fiables.
+L'API vérifie les jetons Bearer et certaines routes contrôlent aussi le rôle.
+Les bases de données sont des services distincts qui doivent rester accessibles
+uniquement depuis les composants autorisés. En production, le trafic public doit
+passer par HTTPS.
+
+### Surfaces d'entrée
+
+| Surface | Présence dans le projet |
+| --- | --- |
+| Formulaires | Aucun formulaire ou frontend n'est fourni. Les données de formulaire éventuelles arrivent à l'API sous forme de JSON. |
+| URL | Routes et paramètres de chemin, par exemple `/produits/:id` et `/comments/:productId`. |
+| Cookies | Aucun cookie n'est lu ni utilisé pour l'authentification ; le jeton est transmis dans l'en-tête `Authorization: Bearer`. |
+| Fichiers | Aucun téléversement de fichier n'est implémenté. Le serveur lit notamment `docs/openapi.yaml` au démarrage ; `.env` contient la configuration locale. |
+| API | Corps JSON des requêtes d'inscription, connexion, profil, produits, panier et commentaires ; en-têtes HTTP, dont le jeton Bearer. `/docs` expose Swagger. |
+| Dépendances | Paquets npm déclarés dans `package.json` et verrouillés dans `package-lock.json`, installés avec `npm ci` et chargés par le serveur. |
+
+### Menaces principales
+
+| Priorité | Menace | Première mesure de parade |
+| --- | --- | --- |
+| Haute | **Falsification de jetons si `JWT_SECRET` est absent** : le code utilise alors la valeur connue `dev-secret`, ce qui peut permettre de fabriquer des jetons acceptés par l'API. | Refuser de démarrer en production si le secret manque ; fournir un secret aléatoire robuste via le gestionnaire de secrets et le renouveler en cas d'exposition. |
+| Haute | **Divulgation de données personnelles** : les réponses publiques du catalogue et du détail produit incluent l'adresse e-mail du vendeur. | Ne renvoyer que les champs du vendeur destinés à être publics, par exemple son identifiant et son nom. |
+| Moyenne | **Essais automatisés et abus des comptes** : l'inscription et la connexion ne montrent pas de limitation de débit ; des requêtes répétées peuvent viser les mots de passe ou créer des comptes en masse. | Ajouter une limitation de débit et une surveillance sur les routes d'authentification, ainsi qu'une politique de mot de passe adaptée. |
+| Moyenne | **Abus ou obsolescence des autorisations** : l'inscription accepte le rôle `vendeur`, et les jetons contiennent un rôle avec une durée de validité de sept jours ; les changements de rôle ne sont pas répercutés dans un jeton déjà émis. | Si l'inscription vendeur doit être approuvée, retirer ce choix de l'inscription publique ; vérifier le statut et les droits actuels côté serveur, et prévoir des jetons plus courts ou révocables. |
+| Moyenne | **Compromission via une dépendance** : une dépendance npm vulnérable ou compromise s'exécute dans le processus de l'API. | Conserver le lockfile, examiner les mises à jour, lancer régulièrement `npm audit` et corriger les vulnérabilités pertinentes avant déploiement. |
+
+Ces priorités sont une première évaluation à partir du code et de sa configuration,
+pas un audit de sécurité exhaustif. Les mesures proposées restent à mettre en œuvre
+et à vérifier avant une exposition en production.
