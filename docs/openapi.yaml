@@ -323,6 +323,36 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Product'
+  /produits/recherche:
+    get:
+      tags: [Products]
+      summary: Search products by name or description
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          description: Text to search for in product names and descriptions.
+      responses:
+        '200':
+          description: Matching products
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  produits:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+        '400':
+          description: Missing or empty search text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /produits/{id}:
     get:
       tags: [Products]
@@ -383,6 +413,28 @@ paths:
                   type: string
                   format: uri
                   nullable: true
+                  description: Optional external image URL. Provide this or the uploaded image, not both.
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name, price]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                price:
+                  type: number
+                  format: float
+                  exclusiveMinimum: 0
+                stock:
+                  type: integer
+                  minimum: 0
+                  default: 0
+                image:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, or WebP image up to 5 MB.
       responses:
         '201':
           description: Product offer created
@@ -405,6 +457,54 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: Not a seller or seller is banned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Image exceeds the 5 MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /produits/images/{fileName}:
+    get:
+      tags: [Products]
+      summary: Download a product image
+      parameters:
+        - in: path
+          name: fileName
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9a-f-]+\.(jpg|png|webp)$'
+      responses:
+        '200':
+          description: Image downloaded as an attachment with nosniff
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename="generated-name.jpg"
+            X-Content-Type-Options:
+              schema:
+                type: string
+              example: nosniff
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Image not found
           content:
             application/json:
               schema:
