@@ -11,11 +11,14 @@ const usersRoutes = require('./routes/users.routes.js');
 const produitsRoutes = require('./routes/produits.routes.js');
 const panierRoutes = require('./routes/panier.routes.js');
 const commentsRoutes = require('./routes/comments.routes.js');
+const { notFoundHandler, errorHandler } = require('./middleware/errorHandler.js');
 
 const app = express();
 
-const API_CONTENT_SECURITY_POLICY = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
-const DOCS_CONTENT_SECURITY_POLICY = "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'";
+const API_CONTENT_SECURITY_POLICY =
+  "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
+const DOCS_CONTENT_SECURITY_POLICY =
+  "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'";
 
 app.use((req, res, next) => {
   const isSwaggerPage = req.path === '/docs' || req.path.startsWith('/docs/');
@@ -29,7 +32,9 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-const openapi = YAML.parse(fs.readFileSync(path.join(__dirname, '..', 'docs', 'openapi.yaml'), 'utf8'));
+const openapi = YAML.parse(
+  fs.readFileSync(path.join(__dirname, '..', 'docs', 'openapi.yaml'), 'utf8')
+);
 
 app.get('/', (req, res) => res.redirect('/docs'));
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
@@ -40,5 +45,9 @@ app.use('/users', usersRoutes);
 app.use('/produits', produitsRoutes);
 app.use('/panier', panierRoutes);
 app.use('/comments', commentsRoutes);
+
+// 404 puis gestionnaire d'erreurs centralisé (toujours en dernier)
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 module.exports = app;
