@@ -9,6 +9,7 @@ const adminRouter = Router();
 router.use(authMiddleware);
 router.get('/me', user.getProfile());
 router.patch('/me', user.updateProfile());
+router.delete('/me', user.deleteAccount());
 
 adminRouter.use(roleMiddleware('admin'));
 adminRouter.get('/utilisateurs', user.getAllUser());

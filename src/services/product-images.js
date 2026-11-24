@@ -69,6 +69,12 @@ const getProductImagePath = (fileName) => {
   return path.join(getUploadDirectory(), fileName);
 };
 
+const getStoredImageFileName = (imageUrl) => {
+  if (typeof imageUrl !== 'string') return null;
+  const match = /^\/produits\/images\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png|webp))$/i.exec(imageUrl);
+  return match ? match[1] : null;
+};
+
 const getImageContentType = (fileName) => {
   if (fileName.endsWith('.jpg')) return 'image/jpeg';
   if (fileName.endsWith('.png')) return 'image/png';
@@ -80,5 +86,6 @@ module.exports = {
   deleteProductImage,
   getImageContentType,
   getProductImagePath,
+  getStoredImageFileName,
   storeProductImage
 };
