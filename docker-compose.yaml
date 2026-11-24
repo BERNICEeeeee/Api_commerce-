@@ -3,11 +3,11 @@ version: '3.8'
 services:
   app:
     build: .
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       PORT: 3000
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       UPLOAD_DIR: /var/lib/api-uploads
       DATABASE_URL: postgresql://${APP_DB_USER:-api_app}:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}@db:5432/mon_projet_db?schema=public
     depends_on:
@@ -15,6 +15,20 @@ services:
     restart: always
     volumes:
       - product_uploads:/var/lib/api-uploads
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: always
 
   db:
     image: postgres:15-alpine
@@ -27,7 +41,7 @@ services:
       MIGRATION_DB_USER: ${MIGRATION_DB_USER:-api_migrator}
       MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?Set MIGRATION_DB_PASSWORD in .env}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -35,3 +49,5 @@ services:
 volumes:
   pgdata:
   product_uploads:
+  caddy_data:
+  caddy_config:
