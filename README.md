@@ -32,8 +32,8 @@ Dans ce fichier, faites pointer `DATABASE_URL` vers `api_app` et ajoutez les
 variables des rôles et de migration suivantes :
 
 ```dotenv
-DATABASE_URL=postgresql://api_app:mot-de-passe-app@localhost:5432/mon_projet_db?schema=public
-DATABASE_MIGRATION_URL=postgresql://api_migrator:mot-de-passe-migration@localhost:5432/mon_projet_db?schema=public
+DATABASE_URL=postgresql://api_app:mot-de-passe-app@localhost:55432/mon_projet_db?schema=public
+DATABASE_MIGRATION_URL=postgresql://api_migrator:mot-de-passe-migration@localhost:55432/mon_projet_db?schema=public
 APP_DB_USER=api_app
 APP_DB_PASSWORD=mot-de-passe-app
 MIGRATION_DB_USER=api_migrator
@@ -45,7 +45,9 @@ POSTGRES_ADMIN_PASSWORD=mot-de-passe-admin-local
 Compose, utilisez le compte applicatif `api_app` dans `DATABASE_URL` et le compte
 `api_migrator` dans `DATABASE_MIGRATION_URL`. Prisma CLI privilégie
 `DATABASE_MIGRATION_URL` ; l'API utilise `DATABASE_URL`. Le compte bootstrap
-PostgreSQL n'est utilisé que par le conteneur de base de données.
+PostgreSQL n'est utilisé que par le conteneur de base de données. Le port hôte
+PostgreSQL de Compose est `55432` par défaut (`POSTGRES_HOST_PORT` permet de le
+modifier) ; le port interne utilisé entre conteneurs reste `5432`.
 
 Les scripts de création des rôles s'exécutent automatiquement uniquement lors
 de l'initialisation d'un volume neuf. Pour un volume Docker déjà initialisé,
@@ -107,6 +109,30 @@ npm start
 ```
 
 Par défaut, l'API est disponible à l'adresse `http://localhost:8000`.
+
+### HTTPS local avec Docker Compose
+
+Le service Caddy sert l'API sur `https://localhost`, redirige HTTP vers HTTPS
+et ajoute l'en-tête HSTS. Avant de démarrer Compose, installez mkcert et créez
+un certificat local reconnu par votre système :
+
+```powershell
+mkcert -install
+New-Item -ItemType Directory -Force certs | Out-Null
+mkcert -cert-file certs\localhost.pem -key-file certs\localhost-key.pem localhost 127.0.0.1 ::1
+```
+
+Configurez dans `.env` les variables PostgreSQL requises (`APP_DB_PASSWORD`,
+`MIGRATION_DB_PASSWORD` et `POSTGRES_ADMIN_PASSWORD`), puis lancez :
+
+```powershell
+docker compose up --build
+```
+
+Ouvrez `https://localhost/docs` ; `http://localhost/docs` doit rediriger vers
+HTTPS. Les certificats et clés générés dans `certs/` ne doivent pas être
+commités. Le service API n'est accessible qu'à travers Caddy dans Compose ;
+`COOKIE_SECURE` est activé par défaut pour les cookies de session.
 
 ## Documentation et routes
 
