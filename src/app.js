@@ -29,6 +29,8 @@ app.use((req, res, next) => {
     isSwaggerPage ? DOCS_CONTENT_SECURITY_POLICY : API_CONTENT_SECURITY_POLICY
   );
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=()');
   next();
 });
 
