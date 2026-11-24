@@ -111,6 +111,11 @@ const getOneProduit = () => async (req, res) => {
 const ajouterProduit = () => async (req, res) => {
   let savedImage;
   try {
+    const allowedFields = ['name', 'description', 'price', 'stock', 'imageUrl'];
+    if (Object.keys(req.body).some((field) => !allowedFields.includes(field))) {
+      return res.status(400).json({ erreur: 'Champ de produit non autorisé.' });
+    }
+
     const { name, description, price, stock, imageUrl } = req.body;
     const vendeurId = req.user?.id;
 

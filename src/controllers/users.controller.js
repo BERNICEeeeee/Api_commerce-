@@ -1,6 +1,13 @@
 const bcrypt = require('bcryptjs');
 const db = require('../db.js');
 
+const MIN_PASSWORD_LENGTH = 12;
+const isValidPasswordLength = (password) => (
+  typeof password === 'string' &&
+  password.length >= MIN_PASSWORD_LENGTH &&
+  Buffer.byteLength(password, 'utf8') <= 72
+);
+
 const sanitizeUser = (user) => {
   if (!user) return null;
   const { password, ...safeUser } = user;
@@ -9,7 +16,7 @@ const sanitizeUser = (user) => {
 
 const getProfile = () => async (req, res) => {
   try {
-    const userId = Number(req.user?.id ?? req.body?.userId);
+    const userId = Number(req.user?.id);
     if (!userId) {
       return res.status(400).json({ erreur: 'Identifiant utilisateur invalide.' });
     }
@@ -27,11 +34,22 @@ const getProfile = () => async (req, res) => {
 
 const updateProfile = () => async (req, res) => {
   try {
+    const allowedFields = ['name', 'email', 'password'];
+    if (Object.keys(req.body).some((field) => !allowedFields.includes(field))) {
+      return res.status(400).json({ erreur: 'Champ de profil non autorisé.' });
+    }
+
     const { name, email, password } = req.body;
     const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ erreur: 'Authentification requise.' });
+    }
+
+    if (password !== undefined && !isValidPasswordLength(password)) {
+      return res.status(400).json({
+        erreur: `Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères et au maximum 72 octets.`
+      });
     }
 
     const data = {};
@@ -124,9 +142,9 @@ const updateUserRole = () => async (req, res) => {
       return res.status(400).json({ erreur: 'Identifiant utilisateur invalide.' });
     }
 
-    const allowedRoles = ['client', 'vendeur', 'admin'];
+    const allowedRoles = ['user', 'admin'];
     if (!role || !allowedRoles.includes(role)) {
-      return res.status(400).json({ erreur: 'Rôle invalide. Valeurs autorisées: client, vendeur, admin.' });
+      return res.status(400).json({ erreur: 'Rôle invalide. Valeurs autorisées: user, admin.' });
     }
 
     const user = await db.user.update({

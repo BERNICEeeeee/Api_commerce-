@@ -4,12 +4,18 @@ const authMiddleware = require('../midleware/auth.js');
 const roleMiddleware = require('../midleware/roles.js');
 
 const router = Router();
+const adminRouter = Router();
 
-router.get('/me', authMiddleware, user.getProfile());
-router.patch('/me', authMiddleware, user.updateProfile());
-router.get('/admin/utilisateurs', authMiddleware, roleMiddleware('admin'), user.getAllUser());
-router.patch('/ban/:id', authMiddleware, roleMiddleware('admin'), user.banUser());
-router.patch('/unban/:id', authMiddleware, roleMiddleware('admin'), user.unbanUser());
-router.patch('/role/:id', authMiddleware, roleMiddleware('admin'), user.updateUserRole());
+router.use(authMiddleware);
+router.get('/me', user.getProfile());
+router.patch('/me', user.updateProfile());
+
+adminRouter.use(roleMiddleware('admin'));
+adminRouter.get('/utilisateurs', user.getAllUser());
+adminRouter.patch('/ban/:id', user.banUser());
+adminRouter.patch('/unban/:id', user.unbanUser());
+adminRouter.patch('/role/:id', user.updateUserRole());
+
+router.use('/admin', adminRouter);
 
 module.exports = router;

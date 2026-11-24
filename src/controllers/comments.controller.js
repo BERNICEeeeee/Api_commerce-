@@ -18,6 +18,10 @@ const getCommentsByProduct = () => async (req, res) => {
 
 const addComment = () => async (req, res) => {
   try {
+    if (Object.keys(req.body).some((field) => !['content', 'rating'].includes(field))) {
+      return res.status(400).json({ erreur: 'Champ de commentaire non autorisé.' });
+    }
+
     const productId = Number(req.params.productId);
     const { content, rating } = req.body;
     const userId = Number(req.user?.id);
@@ -35,12 +39,12 @@ const addComment = () => async (req, res) => {
       return res.status(404).json({ erreur: 'Utilisateur introuvable.' });
     }
 
-    if (user.role !== 'client') {
-      return res.status(403).json({ erreur: 'Seuls les clients peuvent ajouter un commentaire.' });
+    if (user.role !== 'user') {
+      return res.status(403).json({ erreur: 'Seuls les utilisateurs peuvent ajouter un commentaire.' });
     }
 
     if (user.banned) {
-      return res.status(403).json({ erreur: 'Un client banni ne peut pas ajouter de commentaire.' });
+      return res.status(403).json({ erreur: 'Un utilisateur banni ne peut pas ajouter de commentaire.' });
     }
 
     if (!content || !rating) {

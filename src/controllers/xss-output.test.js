@@ -4,6 +4,9 @@ jest.mock('../db.js', () => ({
   },
   product: {
     findUnique: jest.fn()
+  },
+  revokedToken: {
+    findUnique: jest.fn()
   }
 }));
 
@@ -13,38 +16,64 @@ jest.mock('../models/Comment', () => ({
 
 const db = require('../db.js');
 const Comment = require('../models/Comment');
-const { addComment } = require('./comments.controller.js');
+const jwt = require('jsonwebtoken');
+const { getCsrfHeaders } = require('./csrf-test-helper.js');
+
+let app;
+let server;
+let baseUrl;
+let sessionCookie;
 
 describe('user text output', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+  beforeAll(async () => {
+    process.env.JWT_SECRET = 'test-secret';
+    process.env.JWT_ISSUER = 'e-commerce';
+    process.env.JWT_AUDIENCE = 'e-commerce-api';
+    app = require('../app.js');
+    const token = jwt.sign(
+      { id: 5, role: 'user' },
+      process.env.JWT_SECRET,
+      { issuer: process.env.JWT_ISSUER, audience: process.env.JWT_AUDIENCE, jwtid: 'test-client', expiresIn: '1h' }
+    );
+    sessionCookie = `session=${encodeURIComponent(token)}`;
+    server = app.listen(0);
+    await new Promise((resolve) => server.once('listening', resolve));
+    baseUrl = `http://127.0.0.1:${server.address().port}`;
   });
 
-  it('keeps an HTML-looking comment as plain text data', async () => {
+  afterAll(async () => {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    db.revokedToken.findUnique.mockResolvedValue(null);
+  });
+
+  it('escapes HTML characters in the HTTP JSON response and preserves the text after parsing', async () => {
     const content = '<img src=x onerror=alert(1)>';
     const savedComment = { content };
-    const res = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis()
-    };
 
     db.user.findUnique.mockResolvedValue({
       id: 5,
-      role: 'client',
+      role: 'user',
       banned: false,
       name: 'Client'
     });
     db.product.findUnique.mockResolvedValue({ id: 7 });
     Comment.create.mockResolvedValue(savedComment);
 
-    await addComment()(
-      {
-        params: { productId: '7' },
-        body: { content, rating: 4 },
-        user: { id: 5 }
-      },
-      res
-    );
+    const response = await fetch(`${baseUrl}/comments/7`, {
+      method: 'POST',
+      headers: await getCsrfHeaders(baseUrl, {
+        Cookie: sessionCookie,
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify({ content, rating: 4 })
+    });
+    const rawResponse = await response.text();
 
     expect(Comment.create).toHaveBeenCalledWith({
       productId: 7,
@@ -53,10 +82,13 @@ describe('user text output', () => {
       content,
       rating: 4
     });
-    expect(res.json).toHaveBeenCalledWith({
+    expect(response.status).toBe(201);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(rawResponse).toContain('\\u003cimg src=x onerror=alert(1)\\u003e');
+    expect(rawResponse).not.toContain(content);
+    expect(JSON.parse(rawResponse)).toEqual({
       message: 'Commentaire ajouté.',
       comment: savedComment
     });
-    expect(res.status).toHaveBeenCalledWith(201);
   });
 });

@@ -30,8 +30,8 @@ describe('SQL injection input handling', () => {
     await login()({ body: { email, password: 'mot-de-passe-test' } }, res);
 
     expect(db.user.findUnique).toHaveBeenCalledWith({ where: { email } });
-    expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({ erreur: 'Utilisateur introuvable.' });
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ erreur: 'Identifiants invalides.' });
   });
 
   it('rejects an injection-like product identifier before querying Prisma', async () => {

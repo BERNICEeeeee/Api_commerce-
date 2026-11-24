@@ -5,9 +5,10 @@ const roleMiddleware = require('../midleware/roles.js');
 
 const router = Router();
 
-router.get('/', authMiddleware, roleMiddleware('client'), panier.getPanier());
-router.delete('/delete/:id', authMiddleware, roleMiddleware('client'), panier.deleteFromPanier());
-router.post('/ajouter/:id', authMiddleware, roleMiddleware('client'), panier.addToPanier());
-router.patch('/modifier/:id', authMiddleware, roleMiddleware('client'), panier.updatePanier());
+router.use(authMiddleware, roleMiddleware('user'));
+router.get('/', panier.getPanier());
+router.delete('/delete/:id', panier.deleteFromPanier());
+router.post('/ajouter/:id', panier.addToPanier());
+router.patch('/modifier/:id', panier.updatePanier());
 
 module.exports = router;

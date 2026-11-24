@@ -28,6 +28,8 @@ paths:
     post:
       tags: [Authentication]
       summary: Register a user
+      security:
+        - csrfToken: []
       requestBody:
         required: true
         content:
@@ -42,15 +44,12 @@ paths:
                 password:
                   type: string
                   format: password
+                  minLength: 12
                 name:
                   type: string
-                role:
-                  type: string
-                  enum: [client, vendeur]
-                  default: client
       responses:
         '201':
-          description: Account created; includes a JWT and user profile
+          description: Account created; sets the session cookie and returns the user profile
           content:
             application/json:
               schema:
@@ -67,10 +66,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          description: Missing or invalid CSRF token, or request origin is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /auth/login:
     post:
       tags: [Authentication]
       summary: Log in
+      security:
+        - csrfToken: []
       requestBody:
         required: true
         content:
@@ -85,9 +92,16 @@ paths:
                 password:
                   type: string
                   format: password
+                totpCode:
+                  type: string
+                  pattern: '^\d{6}$'
+                  description: Required when TOTP is enabled; alternatively provide recoveryCode.
+                recoveryCode:
+                  type: string
+                  description: Single-use recovery code, used instead of totpCode.
       responses:
         '200':
-          description: Login successful; includes a JWT and user profile
+          description: Login successful; sets a new session cookie and returns the user profile
           content:
             application/json:
               schema:
@@ -99,35 +113,182 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Incorrect password
+          description: Email or password is incorrect
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '404':
-          description: User not found
+        '429':
+          description: Too many attempts from this IP address or for this account
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /auth/disconnect:
-    get:
+        '403':
+          description: Missing or invalid CSRF token, or request origin is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/totp/setup:
+    post:
       tags: [Authentication]
-      summary: Disconnect
-      description: Returns a confirmation. JWTs are stateless and are not invalidated by this endpoint.
+      summary: Start TOTP enrollment
+      description: Requires an authenticated session and CSRF token. Returns a QR code and manual secret; configure TOTP_ENCRYPTION_KEY first.
+      security:
+        - sessionCookie: []
+          csrfToken: []
       responses:
         '200':
-          description: Disconnection confirmation
+          description: QR code and manual TOTP secret; setup is not enabled until confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret:
+                    type: string
+                  otpauthUrl:
+                    type: string
+                  qrCode:
+                    type: string
+                    format: byte
+        '409':
+          description: TOTP is already enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/totp/enable:
+    post:
+      tags: [Authentication]
+      summary: Confirm TOTP enrollment
+      description: Requires the first six-digit code from the authenticator app. Ten recovery codes are returned once; store them securely.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  pattern: '^\d{6}$'
+      responses:
+        '200':
+          description: TOTP enabled and one-time recovery codes returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  recoveryCodes:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Missing setup or invalid confirmation code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/totp/disable:
+    post:
+      tags: [Authentication]
+      summary: Disable TOTP
+      description: Requires the account password and either a current TOTP code or an unused recovery code. After logging in with a recovery code, the password alone can disable TOTP for ten minutes.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                  format: password
+                totpCode:
+                  type: string
+                  pattern: '^\d{6}$'
+                recoveryCode:
+                  type: string
+      responses:
+        '200':
+          description: TOTP disabled
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Missing or invalid session, password, or second factor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/csrf:
+    get:
+      tags: [Authentication]
+      summary: Get a CSRF token
+      description: Sets a SameSite CSRF cookie and returns the matching value for the X-CSRF-Token header required on every state-changing request. Swagger UI adds a fresh token automatically; use /docs?csrf=manual to disable this for testing a 403 response.
+      responses:
+        '200':
+          description: CSRF token issued
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Readable csrfToken cookie with SameSite=Lax.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrfToken]
+                properties:
+                  csrfToken:
+                    type: string
+  /auth/disconnect:
+    post:
+      tags: [Authentication]
+      summary: Disconnect
+      description: Revokes the authenticated session cookie until its expiration. Requires a valid CSRF token.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        '200':
+          description: Token revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Missing or invalid CSRF token, or request origin is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /users/me:
     get:
       tags: [Users]
       summary: Get the authenticated user's profile
       security:
-        - bearerAuth: []
+        - sessionCookie: []
       responses:
         '200':
           description: User profile
@@ -150,7 +311,8 @@ paths:
       tags: [Users]
       summary: Update the authenticated user's profile
       security:
-        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -158,6 +320,7 @@ paths:
             schema:
               type: object
               minProperties: 1
+              additionalProperties: false
               properties:
                 name:
                   type: string
@@ -167,6 +330,7 @@ paths:
                 password:
                   type: string
                   format: password
+                  minLength: 12
       responses:
         '200':
           description: Profile updated
@@ -187,12 +351,19 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Missing or invalid CSRF token, or request origin is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /users/admin/utilisateurs:
     get:
       tags: [Users]
       summary: List all users
+      description: Requires the admin role; other authenticated users receive 403.
       security:
-        - bearerAuth: []
+        - sessionCookie: []
       responses:
         '200':
           description: Users, without password hashes
@@ -209,12 +380,13 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /users/ban/{id}:
+  /users/admin/ban/{id}:
     patch:
       tags: [Users]
       summary: Ban a user
       security:
-        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       parameters:
         - $ref: '#/components/parameters/UserId'
       responses:
@@ -240,12 +412,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /users/unban/{id}:
+  /users/admin/unban/{id}:
     patch:
       tags: [Users]
       summary: Unban a user
       security:
-        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       parameters:
         - $ref: '#/components/parameters/UserId'
       responses:
@@ -265,12 +438,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /users/role/{id}:
+  /users/admin/role/{id}:
     patch:
       tags: [Users]
       summary: Change a user's role
       security:
-        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       parameters:
         - $ref: '#/components/parameters/UserId'
       requestBody:
@@ -283,7 +457,7 @@ paths:
               properties:
                 role:
                   type: string
-                  enum: [client, vendeur, admin]
+                  enum: [user, admin]
       responses:
         '200':
           description: Role updated
@@ -385,15 +559,17 @@ paths:
     post:
       tags: [Products]
       summary: Publish a product offer
-      description: Only sellers may publish offers; banned sellers are forbidden from creating new offers.
+      description: The authenticated user owns the new offer; ownership cannot be supplied by the request. Banned users cannot publish offers.
       security:
-        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [name, price]
               properties:
                 name:
@@ -417,6 +593,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              additionalProperties: false
               required: [name, price]
               properties:
                 name:
@@ -512,19 +689,21 @@ paths:
   /panier:
     get:
       tags: [Cart]
-      summary: Get or create the authenticated user's pending cart
+      summary: Get the authenticated user's pending cart
       security:
-        - bearerAuth: []
+        - sessionCookie: []
       responses:
         '200':
-          description: Pending order with cart items
+          description: Pending order with cart items, or null when no cart exists yet. This GET never creates an order.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   panier:
-                    $ref: '#/components/schemas/Order'
+                    allOf:
+                      - $ref: '#/components/schemas/Order'
+                    nullable: true
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -533,8 +712,10 @@ paths:
     post:
       tags: [Cart]
       summary: Add a product to the cart
+      description: The cart is derived from the authenticated user; ownership, order ID, and price cannot be supplied by the request.
       security:
-        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       parameters:
         - $ref: '#/components/parameters/ProductId'
       requestBody:
@@ -543,6 +724,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 quantity:
                   type: integer
@@ -581,8 +763,10 @@ paths:
     patch:
       tags: [Cart]
       summary: Set a cart line's quantity
+      description: Only a line in the authenticated user's pending cart can be changed; another user's line returns 404.
       security:
-        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       parameters:
         - $ref: '#/components/parameters/CartItemId'
       requestBody:
@@ -591,6 +775,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [quantity]
               properties:
                 quantity:
@@ -623,8 +808,10 @@ paths:
     delete:
       tags: [Cart]
       summary: Remove a cart line
+      description: Only a line in the authenticated user's pending cart can be removed; another user's line returns 404.
       security:
-        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       parameters:
         - $ref: '#/components/parameters/CartItemId'
       responses:
@@ -677,9 +864,10 @@ paths:
     post:
       tags: [Comments]
       summary: Add a comment to a product
-      description: Only authenticated, non-banned clients may add comments.
+      description: Only authenticated, non-banned users may add comments.
       security:
-        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       parameters:
         - $ref: '#/components/parameters/CommentProductId'
       requestBody:
@@ -688,6 +876,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [content, rating]
               properties:
                 content:
@@ -718,7 +907,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: User is not a client or is banned
+          description: User does not have the user role or is banned
           content:
             application/json:
               schema:
@@ -731,10 +920,15 @@ paths:
                 $ref: '#/components/schemas/Error'
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
       bearerFormat: JWT
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
   parameters:
     UserId:
       name: id
@@ -766,7 +960,7 @@ components:
         minimum: 1
   responses:
     Unauthorized:
-      description: Missing or invalid bearer token
+      description: Missing or invalid session cookie
       content:
         application/json:
           schema:
@@ -811,7 +1005,7 @@ components:
           type: string
         role:
           type: string
-          enum: [client, vendeur, admin]
+          enum: [user, admin]
         banned:
           type: boolean
         createdAt:

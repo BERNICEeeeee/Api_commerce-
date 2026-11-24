@@ -27,6 +27,16 @@ const getOrCreatePendingOrder = async (userId) => {
   return order;
 };
 
+const getPendingOrder = async (userId) => db.order.findFirst({
+  where: {
+    userId,
+    status: 'pending'
+  },
+  include: {
+    items: true
+  }
+});
+
 const getPanier = () => async (req, res) => {
   try {
     const userId = req.user?.id;
@@ -34,7 +44,7 @@ const getPanier = () => async (req, res) => {
       return res.status(401).json({ erreur: 'Authentification requise.' });
     }
 
-    const order = await getOrCreatePendingOrder(userId);
+    const order = await getPendingOrder(userId);
     return res.status(200).json({ panier: order });
   } catch (error) {
     return res.status(500).json({ erreur: 'Erreur lors de la récupération du panier.', detail: error.message });
@@ -43,6 +53,10 @@ const getPanier = () => async (req, res) => {
 
 const addToPanier = () => async (req, res) => {
   try {
+    if (Object.keys(req.body).some((field) => field !== 'quantity')) {
+      return res.status(400).json({ erreur: 'Champ de panier non autorisé.' });
+    }
+
     const userId = req.user?.id;
     const productId = Number(req.params.id);
     const quantity = Number(req.body.quantity ?? 1);
@@ -97,6 +111,10 @@ const addToPanier = () => async (req, res) => {
 
 const updatePanier = () => async (req, res) => {
   try {
+    if (Object.keys(req.body).some((field) => field !== 'quantity')) {
+      return res.status(400).json({ erreur: 'Champ de panier non autorisé.' });
+    }
+
     const userId = req.user?.id;
     const itemId = Number(req.params.id);
     const quantity = Number(req.body.quantity);

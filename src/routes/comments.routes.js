@@ -6,6 +6,6 @@ const roleMiddleware = require('../midleware/roles.js');
 const router = Router();
 
 router.get('/:productId', comments.getCommentsByProduct());
-router.post('/:productId', authMiddleware, roleMiddleware('client'), comments.addComment());
+router.post('/:productId', authMiddleware, roleMiddleware('user'), comments.addComment());
 
 module.exports = router;

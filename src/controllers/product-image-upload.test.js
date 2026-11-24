@@ -4,6 +4,9 @@ jest.mock('../db.js', () => ({
   },
   product: {
     create: jest.fn()
+  },
+  revokedToken: {
+    findUnique: jest.fn()
   }
 }));
 
@@ -12,12 +15,13 @@ const os = require('node:os');
 const path = require('node:path');
 const jwt = require('jsonwebtoken');
 const db = require('../db.js');
+const { getCsrfHeaders } = require('./csrf-test-helper.js');
 
 let app;
 let server;
 let baseUrl;
 let uploadDirectory;
-let token;
+let sessionCookie;
 
 const jpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01]);
 
@@ -29,7 +33,7 @@ const upload = async (fileName, bytes, contentType = 'image/jpeg') => {
 
   return fetch(`${baseUrl}/produits/ajouter`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
+    headers: await getCsrfHeaders(baseUrl, { Cookie: sessionCookie }),
     body: form
   });
 };
@@ -43,13 +47,15 @@ describe('product image upload', () => {
     process.env.JWT_AUDIENCE = 'e-commerce-api';
 
     app = require('../app.js');
-    token = jwt.sign(
-      { id: 5, role: 'vendeur' },
+    const token = jwt.sign(
+      { id: 5, role: 'user' },
       process.env.JWT_SECRET,
-      { issuer: process.env.JWT_ISSUER, audience: process.env.JWT_AUDIENCE }
+      { issuer: process.env.JWT_ISSUER, audience: process.env.JWT_AUDIENCE, jwtid: 'test-user', expiresIn: '1h' }
     );
+    sessionCookie = `session=${encodeURIComponent(token)}`;
 
-    db.user.findUnique.mockResolvedValue({ id: 5, banned: false });
+    db.user.findUnique.mockResolvedValue({ id: 5, role: 'user', banned: false });
+    db.revokedToken.findUnique.mockResolvedValue(null);
     db.product.create.mockImplementation(({ data }) => Promise.resolve({ id: 42, ...data }));
 
     server = app.listen(0);
@@ -67,7 +73,8 @@ describe('product image upload', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    db.user.findUnique.mockResolvedValue({ id: 5, banned: false });
+    db.user.findUnique.mockResolvedValue({ id: 5, role: 'user', banned: false });
+    db.revokedToken.findUnique.mockResolvedValue(null);
     db.product.create.mockImplementation(({ data }) => Promise.resolve({ id: 42, ...data }));
   });
 

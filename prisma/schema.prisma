@@ -12,12 +12,33 @@ model User {
   email     String    @unique
   password  String
   name      String
-  role      String    @default("client") // "client", "vendeur", "admin"
+  role      String    @default("user")
   banned    Boolean   @default(false)
+  totpSecret String?
+  totpEnabled Boolean @default(false)
   products  Product[] @relation("VendeurProducts")
   orders    Order[]   @relation("ClientOrders")
+  totpBackupCodes TotpBackupCode[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+}
+
+model TotpBackupCode {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String   @unique
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model RevokedToken {
+  id        String   @id
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
 }
 
 // 2. Produits

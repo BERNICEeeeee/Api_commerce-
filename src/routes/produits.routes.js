@@ -10,6 +10,6 @@ router.get('/catalogue', produits.getCatalogue());
 router.get('/recherche', produits.rechercherProduits());
 router.get('/images/:fileName', produits.getProductImage());
 router.get('/:id', produits.getOneProduit());
-router.post('/ajouter', authMiddleware, roleMiddleware('vendeur'), uploadProductImage, produits.ajouterProduit());
+router.post('/ajouter', authMiddleware, roleMiddleware('user'), uploadProductImage, produits.ajouterProduit());
 
 module.exports = router;
