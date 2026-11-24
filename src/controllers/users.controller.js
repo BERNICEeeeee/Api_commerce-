@@ -1,5 +1,9 @@
 const bcrypt = require('bcryptjs');
 const db = require('../db.js');
+const { clearSessionCookie } = require('../middleware/session-cookie.js');
+const { clearCsrfCookie } = require('../middleware/csrf.js');
+const { verifyTotpOrRecoveryCode } = require('./totp.controller.js');
+const { deleteUserProductImages, eraseUserComments } = require('../services/account-erasure.js');
 
 const MIN_PASSWORD_LENGTH = 12;
 const isValidPasswordLength = (password) => (
@@ -10,7 +14,7 @@ const isValidPasswordLength = (password) => (
 
 const sanitizeUser = (user) => {
   if (!user) return null;
-  const { password, ...safeUser } = user;
+  const { password, totpSecret, ...safeUser } = user;
   return safeUser;
 };
 
@@ -69,6 +73,81 @@ const updateProfile = () => async (req, res) => {
     return res.status(200).json({ message: 'Profil mis à jour.', user: sanitizeUser(updatedUser) });
   } catch (error) {
     return res.status(500).json({ erreur: 'Erreur lors de la mise à jour du profil.', detail: error.message });
+  }
+};
+
+const deleteAccount = () => async (req, res, next) => {
+  try {
+    const { password, totpCode, recoveryCode } = req.body;
+    if (
+      Object.keys(req.body).some((field) => !['password', 'totpCode', 'recoveryCode'].includes(field)) ||
+      typeof password !== 'string'
+    ) {
+      return res.status(400).json({ erreur: 'Mot de passe et facteur de vérification requis.' });
+    }
+
+    const user = await db.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        password: true,
+        totpEnabled: true,
+        totpSecret: true,
+        products: {
+          select: {
+            id: true,
+            imageUrl: true,
+            orderItems: {
+              select: { order: { select: { userId: true } } }
+            }
+          }
+        }
+      }
+    });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ erreur: 'Identifiants invalides.' });
+    }
+
+    if (user.totpEnabled) {
+      const recoveryLoginIsRecent = Number.isSafeInteger(req.user.mfaRecoveryUntil) &&
+        req.user.mfaRecoveryUntil >= Math.floor(Date.now() / 1000);
+      const validFactor = recoveryLoginIsRecent && !totpCode && !recoveryCode
+        ? true
+        : await verifyTotpOrRecoveryCode(user, { totpCode, recoveryCode });
+      if (!validFactor) {
+        return res.status(401).json({ erreur: 'Code de vérification invalide.' });
+      }
+    }
+
+    const productsToKeep = user.products.filter((product) => (
+      product.orderItems.some(({ order }) => order.userId !== user.id)
+    ));
+    const retainedProductIds = productsToKeep.map(({ id }) => id);
+
+    await eraseUserComments(user.id);
+    await deleteUserProductImages(user.products);
+
+    await db.$transaction(async (transaction) => {
+      await transaction.order.deleteMany({ where: { userId: user.id } });
+      if (retainedProductIds.length > 0) {
+        await transaction.product.updateMany({
+          where: { id: { in: retainedProductIds }, vendeurId: user.id },
+          data: { vendeurId: null, imageUrl: null }
+        });
+      }
+      await transaction.product.deleteMany({
+        where: { vendeurId: user.id, id: { notIn: retainedProductIds } }
+      });
+      await transaction.user.delete({ where: { id: user.id } });
+    });
+
+    clearSessionCookie(res);
+    clearCsrfCookie(res);
+    return res.status(200).json({
+      message: 'Compte supprimé. Les commandes et produits historiques conservés ne sont plus associés à votre compte.'
+    });
+  } catch (error) {
+    return next(error);
   }
 };
 
@@ -161,6 +240,7 @@ const updateUserRole = () => async (req, res) => {
 module.exports = {
   getProfile,
   updateProfile,
+  deleteAccount,
   getAllUser,
   banUser,
   unbanUser,

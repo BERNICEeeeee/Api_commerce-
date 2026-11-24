@@ -68,7 +68,7 @@ npx prisma migrate deploy
 npx prisma generate
 ```
 
-`MONGODB_URI` est l'URI de la base MongoDB utilisée par le module de commentaires. La fonction de connexion MongoDB existe dans le projet, mais n'est pas appelée automatiquement au démarrage du serveur ; la connexion doit être activée dans le code pour utiliser les routes de commentaires.
+`MONGODB_URI` est l'URI de la base MongoDB utilisée par le module de commentaires. Les routes de commentaires nécessitent une connexion MongoDB ; la suppression de compte s'y connecte à la demande afin d'effacer aussi les commentaires de l'utilisateur.
 
 ## Variables d'environnement
 
@@ -406,3 +406,44 @@ enrôler un nouvel appareil. En dehors de ce délai, un code TOTP ou de secours
 inutilisé est aussi nécessaire avec le mot de passe. Les migrations Prisma créent
 également la table `TotpBackupCode`, qui ne contient que les hashes des codes de
 secours.
+
+### Suppression du compte et effacement des données
+
+L'utilisateur peut appeler `DELETE /users/me` depuis son compte. La requête
+requiert son mot de passe et, si le MFA est activé, un code TOTP ou de secours
+(le mot de passe suffit durant les dix minutes suivant une connexion par code de
+secours). La mutation exige également le jeton CSRF.
+
+La suppression efface la ligne `User`, ses commandes et lignes de commande, ses
+commentaires MongoDB, les codes de secours et les images produits stockées par
+l'application. Les produits du vendeur qui ne figurent dans aucune commande
+d'un autre compte sont supprimés. Pour préserver l'historique des autres
+acheteurs, les produits encore référencés sont conservés sans vendeur (`vendeurId
+= NULL`) et sans image. Cette table ne contient pas de paiement ni de facture ;
+si ces fonctions sont ajoutées, la durée de conservation légale et les données
+minimales à conserver devront être définies explicitement.
+
+Les JWT n'ont pas de table de sessions : supprimer l'utilisateur rend toutes ses
+sessions existantes inutilisables, car le middleware recharge le compte en base
+à chaque requête. Le navigateur qui demande l'effacement reçoit aussi les
+cookies de session et CSRF expirés. Les autres navigateurs peuvent encore garder
+leur cookie jusqu'à son expiration, mais le serveur le refuse immédiatement.
+La requête renvoie `503` si MongoDB n'est pas configurée ou disponible, avant
+de supprimer le compte ; il faut alors réessayer après rétablissement de MongoDB.
+
+Pour vérifier avant/après, noter l'identifiant affiché avant l'effacement, puis
+exécuter dans PostgreSQL :
+
+```sql
+SELECT id, email, name FROM "User" WHERE id = 42;
+SELECT id, userId FROM "Order" WHERE userId = 42;
+SELECT id, vendeurId, imageUrl FROM "Product" WHERE vendeurId = 42;
+```
+
+Après la réponse `200`, la première requête ne renvoie aucune ligne, la deuxième
+non plus, et la troisième ne renvoie aucun produit rattaché à ce vendeur. Les
+produits historiques qui restent doivent avoir `vendeurId` et `imageUrl` à
+`NULL`. Dans MongoDB, `db.comments.countDocuments({ userId: 42 })` doit renvoyer
+`0`. Remplacez `42` par l'identifiant relevé avant suppression. Les sauvegardes
+de base de données suivent leur propre durée de rétention et ne sont pas
+réécrites par cette opération.

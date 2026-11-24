@@ -357,6 +357,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Users]
+      summary: Delete the authenticated user's account
+      description: Requires the current password and, if enabled, a valid TOTP or unused recovery code. User comments, own orders, unreferenced products and stored product images are erased. Products referenced by other users' orders remain with no seller attribution or image; the user's order lines and account are deleted. Existing JWT cookies are rejected because authentication reloads the account from the database.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              additionalProperties: false
+              properties:
+                password:
+                  type: string
+                  format: password
+                totpCode:
+                  type: string
+                  pattern: '^\d{6}$'
+                recoveryCode:
+                  type: string
+                  pattern: '^[\da-fA-F]{16}$'
+      responses:
+        '200':
+          description: Account and personal data deleted; current session cookies cleared
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid request fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid password, session, or second factor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Comments database is not configured or available; account was not deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Missing or invalid CSRF token, or request origin is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /users/admin/utilisateurs:
     get:
       tags: [Users]
@@ -1041,8 +1097,10 @@ components:
           nullable: true
         vendeurId:
           type: integer
+          nullable: true
         vendeur:
           type: object
+          nullable: true
           properties:
             id:
               type: integer
