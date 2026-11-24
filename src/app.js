@@ -89,6 +89,30 @@ app.use('/panier', panierRoutes);
 app.use('/comments', commentsRoutes);
 
 // 404 puis gestionnaire d'erreurs centralisé (toujours en dernier)
+app.get('/privacy', (_req, res) => {
+  res.type('html').send(`
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+      <meta charset="UTF-8" />
+      <title>Politique de confidentialité</title>
+    </head>
+    <body>
+      <h1>Politique de confidentialité</h1>
+      <h2>1. Finalités</h2>
+      <p>Gestion des comptes clients, authentification, sécurité (2FA) et traitement des commandes e-commerce.</p>
+      <h2>2. Base légale</h2>
+      <p>Exécution du contrat de vente, respect d'obligations légales et intérêt légitime de sécurité.</p>
+      <h2>3. Durées de conservation</h2>
+      <p>Données de compte conservées pendant la durée d'activité puis archivées selon les obligations légales ; logs techniques limités dans le temps.</p>
+      <h2>4. Vos droits</h2>
+      <p>Droit d'accès, de rectification, d'effacement, d'opposition, de limitation et de portabilité de vos données.</p>
+      <h2>5. Contact</h2>
+      <p>Contact confidentialité : privacy@exemple-ecommerce.local</p>
+    </body>
+    </html>
+  `);
+});
 app.use(notFoundHandler);
 app.use(errorHandler);
 
