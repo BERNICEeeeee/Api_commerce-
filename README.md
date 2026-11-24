@@ -182,6 +182,27 @@ Les résultats générés sont intégrés au projet et ont été vérifiés et a
 
 ## Sécurité
 
+### En-têtes HTTP
+
+L'API envoie une CSP restrictive sur ses réponses (`default-src 'none'`,
+`frame-ancestors 'none'`, etc.). Swagger a une CSP distincte qui autorise ses
+ressources locales et ses styles/scripts inline nécessaires, tout en interdisant
+l'intégration dans une frame. Toutes les réponses incluent aussi
+`X-Content-Type-Options: nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin` et une
+`Permissions-Policy` qui désactive caméra, géolocalisation et microphone.
+
+Pour vérifier les en-têtes HTTP sur l'API et sur Swagger depuis PowerShell :
+
+```powershell
+curl.exe -I http://localhost:8000/openapi.json
+curl.exe -I http://localhost:8000/docs/
+```
+
+La première commande montre la CSP API et la seconde la CSP de Swagger. Les deux
+doivent également afficher `X-Content-Type-Options`, `Referrer-Policy` et
+`Permissions-Policy`.
+
 ### Flux et frontières de confiance
 
 ```text
