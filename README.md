@@ -12,7 +12,7 @@ API REST de commerce en ligne développée avec Node.js et Express. Elle propose
 ## Installation
 
 ```bash
-npm ci
+npm install
 ```
 
 Créez un fichier `.env` à la racine du projet et renseignez les variables nécessaires :
@@ -63,12 +63,20 @@ docker compose exec db psql -U postgres -d mon_projet_db -c "SELECT rolname, rol
 
 Les quatre colonnes de privilèges doivent être à `false`.
 
-Appliquez les migrations du projet et générez Prisma Client :
+Après le démarrage de PostgreSQL, appliquez les migrations :
 
 ```bash
 npx prisma migrate deploy
+```
+
+Pour lancer l'API directement sur l'hôte, générez aussi Prisma Client :
+
+```bash
 npx prisma generate
 ```
+
+La génération de Prisma Client est faite automatiquement lors de la construction
+de l'image Docker.
 
 `MONGODB_URI` est l'URI de la base MongoDB utilisée par le module de commentaires. La fonction de connexion MongoDB existe dans le projet, mais n'est pas appelée automatiquement au démarrage du serveur ; la connexion doit être activée dans le code pour utiliser les routes de commentaires.
 
@@ -77,7 +85,7 @@ npx prisma generate
 | Variable | Description | Valeur par défaut |
 | --- | --- | --- |
 | `PORT` | Port HTTP de l'API | `8000` |
-| `COOKIE_SECURE` | Force l'attribut `Secure` du cookie de session, notamment pour un test local en HTTPS | `false` (activé en production) |
+| `COOKIE_SECURE` | Force l'attribut `Secure` du cookie de session | `false` en local ; `true` par défaut avec Compose |
 | `CSRF_SECRET` | Clé dédiée à la signature des jetons CSRF | `JWT_SECRET` |
 | `APP_ORIGIN` | Origine publique de l'API pour le contrôle Origin derrière un proxy HTTPS | Origine de la requête |
 | `DATABASE_URL` | URL PostgreSQL du rôle applicatif (lecture/écriture des données) | Aucune |
@@ -86,6 +94,7 @@ npx prisma generate
 | `APP_DB_USER` / `APP_DB_PASSWORD` | Identifiants du rôle applicatif Docker | Aucune |
 | `MIGRATION_DB_USER` / `MIGRATION_DB_PASSWORD` | Identifiants du rôle migrations Docker | Aucune |
 | `POSTGRES_ADMIN_PASSWORD` | Mot de passe du compte bootstrap PostgreSQL dans Docker | Aucune |
+| `POSTGRES_HOST_PORT` | Port PostgreSQL exposé sur l'hôte par Compose | `55432` |
 | `JWT_SECRET` | Clé de signature des jetons JWT | `dev-secret` |
 | `JWT_ISSUER` | Émetteur des jetons JWT | `e-commerce` |
 | `JWT_AUDIENCE` | Audience des jetons JWT | `e-commerce-api` |
@@ -95,6 +104,8 @@ npx prisma generate
 En dehors du développement, configurez impérativement une valeur `JWT_SECRET` robuste et gardez le fichier `.env` hors du contrôle de version.
 
 ## Lancement
+
+### Lancement direct sur l'hôte
 
 Mode développement (redémarrage automatique à la modification des fichiers) :
 
@@ -112,32 +123,69 @@ Par défaut, l'API est disponible à l'adresse `http://localhost:8000`.
 
 ### HTTPS local avec Docker Compose
 
-Le service Caddy sert l'API sur `https://localhost`, redirige HTTP vers HTTPS
-et ajoute l'en-tête HSTS. Avant de démarrer Compose, installez mkcert et créez
-un certificat local reconnu par votre système :
+Compose utilise PostgreSQL sur le port interne `5432` et l'expose sur
+`localhost:55432` par défaut. Les URL de base de données utilisées par les
+commandes lancées sur l'hôte doivent donc utiliser le port `55432` :
 
-```powershell
+```dotenv
+DATABASE_URL=postgresql://api_app:<APP_DB_PASSWORD>@localhost:55432/mon_projet_db?schema=public
+DATABASE_MIGRATION_URL=postgresql://api_migrator:<MIGRATION_DB_PASSWORD>@localhost:55432/mon_projet_db?schema=public
+APP_DB_USER=api_app
+APP_DB_PASSWORD=<mot-de-passe-app>
+MIGRATION_DB_USER=api_migrator
+MIGRATION_DB_PASSWORD=<mot-de-passe-migration>
+POSTGRES_ADMIN_PASSWORD=<mot-de-passe-admin>
+```
+
+Remplacez les valeurs entre chevrons par des secrets distincts et gardez `.env`
+hors du contrôle de version. Si le port `55432` est déjà occupé, choisissez un
+autre `POSTGRES_HOST_PORT` et utilisez le même port dans les deux URL.
+
+Sous Windows, installez mkcert (par exemple avec
+`winget install --id FiloSottile.mkcert -e`), puis rouvrez l'invite de commandes
+et créez un certificat local reconnu par le système :
+
+```cmd
 mkcert -install
-New-Item -ItemType Directory -Force certs | Out-Null
+if not exist certs mkdir certs
 mkcert -cert-file certs\localhost.pem -key-file certs\localhost-key.pem localhost 127.0.0.1 ::1
 ```
 
-Configurez dans `.env` les variables PostgreSQL requises (`APP_DB_PASSWORD`,
-`MIGRATION_DB_PASSWORD` et `POSTGRES_ADMIN_PASSWORD`), puis lancez :
+Démarrez PostgreSQL et attendez qu'il soit prêt :
 
-```powershell
-docker compose up --build
+```cmd
+docker compose up -d db
+docker compose exec db pg_isready -U postgres -d mon_projet_db
 ```
 
-Ouvrez `https://localhost/docs` ; `http://localhost/docs` doit rediriger vers
-HTTPS. Les certificats et clés générés dans `certs/` ne doivent pas être
-commités. Le service API n'est accessible qu'à travers Caddy dans Compose ;
-`COOKIE_SECURE` est activé par défaut pour les cookies de session.
+Pour un volume de base de données déjà initialisé, exécutez une fois le script
+de création des rôles :
+
+```cmd
+docker compose exec db sh /docker-entrypoint-initdb.d/01-create-roles.sh
+```
+
+Appliquez les migrations depuis l'hôte, puis construisez et démarrez l'API et
+Caddy :
+
+```cmd
+npx prisma migrate deploy
+docker compose up --build -d
+docker compose ps
+```
+
+Caddy sert l'API sur `https://localhost`, redirige HTTP vers HTTPS et ajoute
+l'en-tête HSTS. Ouvrez `https://localhost/docs`. Les certificats et clés dans
+`certs/` ne doivent pas être partagés ni commités. Dans Compose, l'API n'est
+accessible qu'à travers Caddy et `COOKIE_SECURE` est activé par défaut.
+Consultez les journaux avec `docker compose logs -f app caddy db` ; arrêtez les
+services avec `docker compose down` (sans `-v` pour conserver les données).
 
 ## Documentation et routes
 
-- Interface Swagger : [http://localhost:8000/docs](http://localhost:8000/docs)
-- Spécification OpenAPI au format JSON : [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
+- Interface Swagger (Compose) : [https://localhost/docs](https://localhost/docs)
+- Spécification OpenAPI (Compose) : [https://localhost/openapi.json](https://localhost/openapi.json)
+- Lancement direct sur l'hôte : `http://localhost:8000/docs` et `http://localhost:8000/openapi.json`
 - Spécification source : [`docs/openapi.yaml`](docs/openapi.yaml)
 
 Les principales ressources sont accessibles sous `/auth`, `/users`, `/produits`, `/panier` et `/comments`. Les opérations protégées nécessitent le cookie de session qui contient le JWT ; certaines sont réservées à un rôle particulier. Les méthodes, paramètres et formats de requête sont détaillés dans Swagger. Les routes d'administration sont regroupées sous `/users/admin` et contrôlées côté serveur.
